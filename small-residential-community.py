@@ -5,47 +5,46 @@ import pandas as pd
 dss.Text.Command("Clear")
 dss.Text.Command("new circuit.community basekv=12.47 phases=3 bus1=SourceBus")
 
-# 2. The Primary Line (The "Street" Line)
-dss.Text.Command("new line.line1 phases=3 bus1=SourceBus bus2=MainBus length=2 units=km r1=0.18 x1=0.41")
+# 2. Primary Line (2km Street Line)
+dss.Text.Command("new line.primary phases=3 bus1=SourceBus bus2=MainBus length=2 units=km r1=0.18 x1=0.41")
 
-# 3. THE HIERARCHY: Add a Transformer
-# This steps 12.47kV down to 0.24kV (240V) for the houses
+# 3. Transformer (Steps down to 0.24kV)
 dss.run_command("""
-    new transformer.reg_transformer 
-    phases=3 
-    windings=2 
-    buses=[MainBus, HouseBus] 
-    conns=[delta, wye] 
-    kvs=[12.47, 0.24] 
-    kvas=[100, 100] 
-    xhl=8
+    new transformer.sub_trans phases=3 windings=2 
+    buses=[MainBus, HouseBus] kvs=[12.47, 0.24] kvas= xhl=8
 """)
 
-# 4. Add 5 Houses to the LOW VOLTAGE bus (HouseBus)
+# 4. Secondary Line (500ft of wire from Transformer to the Houses' area)
+# We use 'units=ft' and a higher resistance (r1) because these wires are smaller
+dss.Text.Command("new line.secondary phases=3 bus1=HouseBus bus2=StreetPole length=500 units=ft r1=0.48 x1=0.08")
+
+# 5. Add Service Drops and Houses
 for i in range(1, 6):
     phase = (i % 3) + 1 
-    # Note: kv is now 0.139 (which is 0.24 / sqrt(3) for a single phase)
-    dss.Text.Command(f"new load.house{i} bus1=HouseBus.{phase} phases=1 kv=0.139 kw=5 pf=0.95")
+    
+    # Each house gets its own 'Service Drop' wire (100ft from the pole to the house)
+    # This is usually very thin wire, so we use a high resistance (r1=1.2)
+    dss.Text.Command(f"new line.service{i} phases=1 bus1=StreetPole.{phase} bus2=HouseNode{i} length=100 units=ft r1=1.2 x1=0.08")
+    
+    # Plug the house into its specific Node
+    dss.Text.Command(f"new load.house{i} bus1=HouseNode{i} phases=1 kv=0.139 kw=5 pf=0.95")
 
-# 5. Define Voltage Bases for BOTH levels
+# 6. Define Voltage Bases
 dss.Text.Command("Set Voltagebases=[12.47, 0.24]")
 dss.Text.Command("CalcVoltageBases")
 
-# --- SCENARIO 1: Base Case ---
+# --- Scenario 1: Base Case ---
 dss.Solution.Solve()
 base_voltages = dss.Circuit.AllBusMagPu()
-print(f"Base Case Max Voltage: {max(base_voltages):.4f} pu")
 
-# --- SCENARIO 2: Add Datacenter (Stays on the high-voltage MainBus) ---
+# --- Scenario 2: Add Datacenter (Stays on High Voltage line) ---
 dss.Text.Command("new load.datacenter bus1=MainBus phases=3 kv=12.47 kw=1000 pf=0.90")
 dss.Solution.Solve()
 impact_voltages = dss.Circuit.AllBusMagPu()
-print(f"Impact Case Max Voltage: {max(impact_voltages):.4f} pu")
 
-# 6. Summary
+# Summary
 results = pd.DataFrame({
     "Scenario": ["Residential Only", "With Datacenter"],
     "Voltage (pu)": [max(base_voltages), max(impact_voltages)]
 })
-print("\n--- Summary ---")
 print(results)
