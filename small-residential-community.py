@@ -10,7 +10,7 @@ dss.Text.Command("new line.line1 phases=3 bus1=SourceBus bus2=MainBus length=2 u
 
 # 3. THE HIERARCHY: Add a Transformer
 # This steps 12.47kV down to 0.24kV (240V) for the houses
-dss.Text.Command("""
+dss.run_command("""
     new transformer.reg_transformer 
     phases=3 
     windings=2 
